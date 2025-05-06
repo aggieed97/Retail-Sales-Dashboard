@@ -111,7 +111,36 @@ def get_fred_indices(api_key: str | None) -> tuple[float, float] | None:
         st.error(f"Error fetching FRED indices: {e}")
         return None
 
+# --- Helper Function to Get Default Values ---
+def get_default_values_for_sku(sku: str, df: pd.DataFrame) -> Dict[str, float]:
+    """Fetch default values for the selected SKU from the dataset."""
+    sku_row = df[df['sku'] == sku]
+    if sku_row.empty:
+        return {}
+    return {
+        "Price": sku_row["price"].iloc[0],
+        "Units Ordered": sku_row["units_ordered"].iloc[0],
+        "Advertising Spend": sku_row["advertising_spend"].iloc[0],
+        "Managed Stock Level": sku_row["managed_stock_level"].iloc[0],
+        "Profit Margin": sku_row["profit_margin"].iloc[0],
+        "Average Pricing": sku_row["average_pricing"].iloc[0],
+        "Average Competitor Pricing": sku_row["average_competitor_pricing"].iloc[0]
+    }
 
+    # --- Restore Defaults Button Logic ---
+    if selected_sku:
+        default_values = get_default_values_for_sku(selected_sku, df)
+
+        if default_values:
+            if st.button("Restore Defaults"):
+                for key, value in default_values.items():
+                    if key in input_strings:
+                        st.session_state[key] = str(value)
+
+            # Pre-fill input fields with default values if not already set
+            for key, value in default_values.items():
+                if key in input_strings and key not in st.session_state:
+                    st.session_state[key] = str(value)
 # --- Load Data, Model, and FRED Indices (Cached) ---
 
 df = load_dataset(LOCAL_DATA_PATH)
