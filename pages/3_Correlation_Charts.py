@@ -28,7 +28,7 @@ def load_dataset():
 
 df = load_dataset()
 
-heatmap_cols = df.columns[2:-4]
+heatmap_cols = df.select_dtypes(include=np.number).columns.tolist()
 
 corr_matrix = df[heatmap_cols].corr()
 mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=0)
