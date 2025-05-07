@@ -139,7 +139,7 @@ def get_default_values_for_sku(sku: str, df: pd.DataFrame) -> Dict[str, float]:
     return {
         "Price": round(sku_row["price"].iloc[0], 2),
         "Units Ordered": round(sku_row["unitsordered"].iloc[0], 2),
-        "Advertising Spend": round(sku_row["adspend"].iloc[0], 2),
+        "Advertising Spend": round(sku_row["adspend"].iloc[-1], 2),
         "Managed Stock Level": round(sku_row["managed_fba_stock_level"].iloc[0], 0),
         "Profit Margin": round(sku_row["profit_margin"].iloc[0], 2),
         "Average Pricing": round(sku_row["avg_pricing"].iloc[0], 2),
