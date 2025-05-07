@@ -111,6 +111,7 @@ def get_fred_indices(api_key: str | None) -> tuple[float, float] | None:
         st.error(f"Error fetching FRED indices: {e}")
         return None
 
+
 # --- Helper Function to Get Default Values ---
 def get_default_values_for_sku(sku: str, df: pd.DataFrame) -> Dict[str, float]:
     """Fetch default values for the selected SKU from the dataset."""
@@ -119,12 +120,12 @@ def get_default_values_for_sku(sku: str, df: pd.DataFrame) -> Dict[str, float]:
         return {}
     return {
         "Price": sku_row["price"].iloc[0],
-        "Units Ordered": sku_row["units_ordered"].iloc[0],
-        "Advertising Spend": sku_row["advertising_spend"].iloc[0],
-        "Managed Stock Level": sku_row["managed_stock_level"].iloc[0],
+        "Units Ordered": sku_row["unitsordered"].iloc[0],
+        "Advertising Spend": sku_row["adspend"].iloc[0],
+        "Managed Stock Level": sku_row["managed_fba_stock_level"].iloc[0],
         "Profit Margin": sku_row["profit_margin"].iloc[0],
-        "Average Pricing": sku_row["average_pricing"].iloc[0],
-        "Average Competitor Pricing": sku_row["average_competitor_pricing"].iloc[0]
+        "Average Pricing": sku_row["avg_pricing"].iloc[0],
+        "Average Competitor Pricing": sku_row["avg_comp_pricing"].iloc[0]
     }
 
 # --- Load Data, Model, and FRED Indices (Cached) ---
