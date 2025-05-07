@@ -15,25 +15,43 @@ st.markdown("<h1 style='text-align: center;'>Profit Prediction Model</h1>", unsa
 
 # --- Constants ---
 GCS_PUBLIC_MODEL_URL = "https://storage.googleapis.com/adta5410-public-bucket/final_model.pkl"
-LOCAL_DATA_PATH = './pages/clean_retail_data.csv'  # Path to your dataset
+LOCAL_DATA_PATH = './pages/clean_retail_data.csv'
 
-# Assuming your FRED API key is stored in Streamlit secrets
-FRED_API_KEY = st.secrets.get("FED_API") # Use .get() for safer access
+FRED_API_KEY = st.secrets.get("FED_API")
 
-# Define the exact order of features the model expects for prediction
-# THIS IS CRUCIAL - ENSURE THIS MATCHES YOUR MODEL'S TRAINING DATA COLUMN ORDER
 MODEL_FEATURE_ORDER = [
     "Price", "Units Ordered", "Advertising Spend",
     "Managed Stock Level", "DI Last Item", "PPI Last Item",
     "Profit Margin", "Average Pricing", "Average Competitor Pricing"
 ]
 
-# Define which of these features are suitable for varying in the plot
+
 FEATURES_TO_VARY = [
     "Price", "Units Ordered", "Advertising Spend",
     "Managed Stock Level", "Profit Margin",
     "Average Pricing", "Average Competitor Pricing"
 ]
+
+# --- List of keys for the input fields that will be linked to session state ---
+INPUT_KEYS = [
+    "Price",
+    "Units Ordered",
+    "Advertising Spend",
+    "Managed Stock Level",
+    "Profit Margin",
+    "Average Pricing",
+    "Average Competitor Pricing"
+]
+
+
+# --- Session State Initialization for Input Fields and SKU Tracking ---
+for key in INPUT_KEYS:
+    if key not in st.session_state:
+        st.session_state[key] = None
+
+if 'last_selected_sku' not in st.session_state:
+    st.session_state.last_selected_sku = None
+
 
 @st.cache_data()
 def load_dataset(data_path: str) -> pd.DataFrame:
@@ -112,21 +130,32 @@ def get_fred_indices(api_key: str | None) -> tuple[float, float] | None:
         return None
 
 
-# --- Helper Function to Get Default Values ---
+# --- Helper Function to Get Default Values (Your existing code, modified for rounding) ---
 def get_default_values_for_sku(sku: str, df: pd.DataFrame) -> Dict[str, float]:
     """Fetch default values for the selected SKU from the dataset."""
     sku_row = df[df['sku'] == sku]
     if sku_row.empty:
         return {}
     return {
-        "Price": sku_row["price"].iloc[0],
-        "Units Ordered": sku_row["unitsordered"].iloc[0],
-        "Advertising Spend": sku_row["adspend"].iloc[0],
-        "Managed Stock Level": sku_row["managed_fba_stock_level"].iloc[0],
-        "Profit Margin": sku_row["profit_margin"].iloc[0],
-        "Average Pricing": sku_row["avg_pricing"].iloc[0],
-        "Average Competitor Pricing": sku_row["avg_comp_pricing"].iloc[0]
+        "Price": round(sku_row["price"].iloc[0], 2),
+        "Units Ordered": round(sku_row["unitsordered"].iloc[0], 2),
+        "Advertising Spend": round(sku_row["adspend"].iloc[0], 2),
+        "Managed Stock Level": round(sku_row["managed_fba_stock_level"].iloc[0], 0),
+        "Profit Margin": round(sku_row["profit_margin"].iloc[0], 2),
+        "Average Pricing": round(sku_row["avg_pricing"].iloc[0], 2),
+        "Average Competitor Pricing": round(sku_row["avg_comp_pricing"].iloc[0], 2)
     }
+
+# --- Callback function for the "Restore Defaults" button ---
+def restore_defaults_callback(selected_sku: str, df: pd.DataFrame):
+    """Fetches default values and updates session state."""
+    default_values = get_default_values_for_sku(selected_sku, df)
+    if default_values:
+        for key, value in default_values.items():
+            if key in INPUT_KEYS:
+                # Update session state with default values (as strings)
+                st.session_state[key] = str(value)
+
 
 # --- Load Data, Model, and FRED Indices (Cached) ---
 
@@ -143,7 +172,6 @@ if fred_indices is None:
      st.stop()
 
 ppi_last_item, di_last_item = fred_indices
-
 
 
 st.sidebar.header("Product Selection")
@@ -165,49 +193,82 @@ if not sku_options:
 else:
     selected_sku = st.sidebar.selectbox(
         label="Step 2: Choose a SKU",
-        options=sku_options
+        options=sku_options,
+        key='selected_sku_selectbox'
     )
 
-# --- Restore Defaults Button Logic ---
-if selected_sku:
+# --- Load Defaults into Session State when SKU Changes ---
+if selected_sku and selected_sku != st.session_state.last_selected_sku:
+    # SKU has changed, load new defaults into state
     default_values = get_default_values_for_sku(selected_sku, df)
 
     if default_values:
-        if st.button("Restore Defaults"):
-            for key, value in default_values.items():
-                if key in input_strings:
-                    st.session_state[key] = str(value)
-
-        # Pre-fill input fields with default values if not already set
         for key, value in default_values.items():
-            if key in input_strings and key not in st.session_state:
-                st.session_state[key] = str(value)
+            if key in INPUT_KEYS:
+                 st.session_state[key] = str(value)
+
+    st.session_state.last_selected_sku = selected_sku
+
+elif not selected_sku and st.session_state.last_selected_sku is not None:
+     for key in INPUT_KEYS:
+         st.session_state[key] = None
+     st.session_state.last_selected_sku = None
+
 
 st.subheader("Select a Product and Enter Financial Metrics for Single Prediction")
 
-# Collect USER INPUT values as strings
-input_strings: Dict[str, str] = {
-    "Price": st.text_input("Step 3: Enter Price"),
-    "Units Ordered": st.text_input("Step 4: Enter Units"),
-    "Advertising Spend": st.text_input("Step 5: Enter Advertising Spend"),
-    "Managed Stock Level": st.text_input("Step 6: Enter Managed Stock Level"),
-    "Profit Margin": st.text_input("Step 7: Enter Profit Margin"),
-    "Average Pricing": st.text_input("Step 8: Enter Average Pricing"),
-    "Average Competitor Pricing": st.text_input("Step 9: Enter Average Competitor Pricing")
+# --- Define Input Fields (linked to Session State) ---
+label_mapping = {
+    "Price": "Step 3: Enter Price",
+    "Units Ordered": "Step 4: Enter Units",
+    "Advertising Spend": "Step 5: Enter Advertising Spend",
+    "Managed Stock Level": "Step 6: Enter Managed Stock Level",
+    "Profit Margin": "Step 7: Enter Profit Margin",
+    "Average Pricing": "Step 8: Enter Average Pricing",
+    "Average Competitor Pricing": "Step 9: Enter Average Competitor Pricing"
 }
 
-# Display the fetched FRED indices
-# st.subheader("Current Economic Indices (Fetched from FRED)")
-# st.write(f"Latest Producer Price Index (PPI): `{ppi_last_item:.4f}`")
-# st.write(f"Latest Broad Trade Weighted US Dollar Index (DI): `{di_last_item:.4f}`")
+num_cols = 2
+cols = st.columns(num_cols)
+col_index = 0
+
+input_strings: Dict[str, str] = {}
+
+for key in INPUT_KEYS:
+    label = label_mapping.get(key, key)
+
+    current_value_from_state = st.session_state.get(key)
+    display_value = "" if current_value_from_state is None else str(current_value_from_state)
+
+    with cols[col_index]:
+         st.text_input(
+             label=label,
+             value=display_value,
+             key=key
+         )
+    input_strings[key] = str(st.session_state.get(key, ""))
+
+    col_index = (col_index + 1) % num_cols
+
+
+# --- Restore Defaults Button Logic (Using Callback) ---
+if selected_sku:
+     st.markdown("---")
+
+     col1, col2 = st.columns([3, 1])
+
+     with col2:
+         st.button(
+             "Restore Defaults",
+             on_click=restore_defaults_callback,
+             args=(selected_sku, df)
+         )
 
 
 # Add a button for the single prediction
 predict_button = st.button("Predict Single Profit")
 
-
 # --- Single Prediction Logic ---
-
 if predict_button and selected_sku is not None:
     st.subheader("Single Prediction Result")
 
@@ -215,18 +276,12 @@ if predict_button and selected_sku is not None:
     all_user_inputs_valid = True
     error_messages: List[str] = []
 
-    text_input_order_keys = [
-        "Price", "Units Ordered", "Advertising Spend",
-        "Managed Stock Level", "Profit Margin",
-        "Average Pricing", "Average Competitor Pricing"
-    ]
-
-    for key in text_input_order_keys:
-        value_str = input_strings.get(key, "")
+    for key in INPUT_KEYS:
+        value_str = str(st.session_state.get(key, "")) # Ensure it's a string
 
         if value_str == "":
             all_user_inputs_valid = False
-            error_messages.append(f"'{key}' is required.")
+            error_messages.append(f"'{label_mapping.get(key, key)}' is required.")
             continue
 
         try:
@@ -234,7 +289,7 @@ if predict_button and selected_sku is not None:
             user_input_numeric.append(value_numeric)
         except ValueError:
             all_user_inputs_valid = False
-            error_messages.append(f"'{key}' must be a valid number.")
+            error_messages.append(f"'{label_mapping.get(key, key)}' must be a valid number.")
             continue
 
     if all_user_inputs_valid:
@@ -247,9 +302,13 @@ if predict_button and selected_sku is not None:
                      final_data_to_predict.append(di_last_item)
                 elif feature_name == "PPI Last Item":
                      final_data_to_predict.append(ppi_last_item)
-                elif feature_name in text_input_order_keys:
-                     final_data_to_predict.append(user_input_numeric[text_input_index])
-                     text_input_index += 1
+                elif feature_name in INPUT_KEYS:
+                     try:
+                         input_key_index = INPUT_KEYS.index(feature_name)
+                         final_data_to_predict.append(user_input_numeric[input_key_index])
+                     except ValueError:
+                         st.error(f"Internal Error: Feature '{feature_name}' from MODEL_FEATURE_ORDER not found in INPUT_KEYS.")
+                         st.stop()
 
             input_array = np.array([final_data_to_predict])
             prediction = model.predict(input_array)
@@ -278,26 +337,20 @@ elif predict_button and selected_sku is None:
 
 
 # --- Prediction Range Visualization ---
-
 st.subheader("Analyze Profit Across a Range")
 
 current_user_inputs_valid = True
-current_user_input_numeric_values: List[float] = []
+current_user_input_numeric_values: Dict[str, float] = {} # Use a dict for easier lookup
 
-text_input_order_keys = [
-    "Price", "Units Ordered", "Advertising Spend",
-    "Managed Stock Level", "Profit Margin",
-    "Average Pricing", "Average Competitor Pricing"
-]
+for key in INPUT_KEYS:
+    value_str = str(st.session_state.get(key, ""))
 
-for key in text_input_order_keys:
-    value_str = input_strings.get(key, "")
     if value_str == "":
         current_user_inputs_valid = False
         break
     try:
         value_numeric = float(value_str)
-        current_user_input_numeric_values.append(value_numeric)
+        current_user_input_numeric_values[key] = value_numeric
     except ValueError:
         current_user_inputs_valid = False
         break
@@ -306,51 +359,46 @@ for key in text_input_order_keys:
 if not current_user_inputs_valid or selected_sku is None:
     st.info("Please select a SKU and enter valid numbers for all financial metrics above to enable the range analysis.")
 else:
-    # --- Range Selection Widgets ---
     st.write("Select a feature to vary and define the range.")
 
     feature_to_vary = st.selectbox(
         label="Select Feature to Vary",
-        options=FEATURES_TO_VARY
+        options=FEATURES_TO_VARY,
+        key='feature_to_vary_selectbox'
     )
 
-    # Find the current value of the selected feature to help set default range
-    try:
-        text_input_idx_to_vary = text_input_order_keys.index(feature_to_vary)
-        current_value_of_feature_to_vary = current_user_input_numeric_values[text_input_idx_to_vary]
+    current_value_of_feature_to_vary = current_user_input_numeric_values.get(feature_to_vary, 0.0)
 
-        default_min = current_value_of_feature_to_vary * 0.5
-        default_max = current_value_of_feature_to_vary * 1.5
+    default_min = current_value_of_feature_to_vary * 0.5
+    default_max = current_value_of_feature_to_vary * 1.5
 
-        if current_value_of_feature_to_vary <= 0:
-             default_min = 0
-             default_max = max(10.0, current_value_of_feature_to_vary + 10.0)
+    if current_value_of_feature_to_vary <= 0:
+         default_min = 0
+         default_max = max(10.0, current_value_of_feature_to_vary + 10.0)
 
-        if default_min > default_max:
-             default_min, default_max = default_max, default_min
+    if default_min > default_max:
+         default_min, default_max = default_max, default_min
 
-        default_min = float(f"{default_min:.2f}")
-        default_max = float(f"{default_max:.2f}")
-
-    except (ValueError, IndexError):
-         current_value_of_feature_to_vary = 0.0
-         default_min = 0.0
-         default_max = 100.0
+    default_min = float(f"{default_min:.2f}")
+    default_max = float(f"{default_max:.2f}")
 
 
     range_min = st.number_input(
         f"Minimum value for {feature_to_vary}",
-        value=default_min # Use cleaned default
+        value=default_min,
+        key=f'range_min_{feature_to_vary}'
     )
 
     range_max = st.number_input(
         f"Maximum value for {feature_to_vary}",
-         value=default_max # Use cleaned default
+         value=default_max,
+         key=f'range_max_{feature_to_vary}'
     )
 
     num_steps = st.slider(
         "Number of steps in range",
-        min_value=20, max_value=200, value=50, step=10
+        min_value=20, max_value=200, value=50, step=10,
+        key=f'num_steps_{feature_to_vary}'
     )
 
     plot_button = st.button(f"Generate Plot for {feature_to_vary} Range")
@@ -367,24 +415,26 @@ else:
 
                 plot_data: List[Dict[str, float]] = []
 
-                feature_vary_index = MODEL_FEATURE_ORDER.index(feature_to_vary)
-
                 base_data_point: List[float] = []
-                current_text_input_index = 0
 
                 for feature_name in MODEL_FEATURE_ORDER:
                     if feature_name == "DI Last Item":
                          base_data_point.append(di_last_item)
                     elif feature_name == "PPI Last Item":
                          base_data_point.append(ppi_last_item)
-                    elif feature_name in text_input_order_keys:
-                        base_data_point.append(current_user_input_numeric_values[current_text_input_index])
-                        current_text_input_index += 1
-                    # No else needed here
+                    elif feature_name in INPUT_KEYS:
+                        base_data_point.append(current_user_input_numeric_values.get(feature_name, 0.0))
+
+                try:
+                    feature_vary_index_in_model_order = MODEL_FEATURE_ORDER.index(feature_to_vary)
+                except ValueError:
+                     st.error(f"Internal Error: Feature '{feature_to_vary}' not found in MODEL_FEATURE_ORDER.")
+                     st.stop()
+
 
                 for value in varying_values:
                     data_point_for_prediction = base_data_point.copy()
-                    data_point_for_prediction[feature_vary_index] = value
+                    data_point_for_prediction[feature_vary_index_in_model_order] = value
 
                     input_array = np.array([data_point_for_prediction])
                     predicted_profit = model.predict(input_array)[0]
@@ -401,7 +451,7 @@ else:
                     x=feature_to_vary,
                     y="Predicted Profit",
                     title=f"Predicted Profit vs. {feature_to_vary}",
-                    labels={"Predicted Profit": "Predicted Profit ($)"} # Optional: improve label
+                    labels={"Predicted Profit": "Predicted Profit ($)"}
                 )
 
                 st.plotly_chart(chart, use_container_width=True)
@@ -414,5 +464,4 @@ else:
 # --- Optional: Display selected SKU details ---
 if selected_sku:
     st.sidebar.subheader(f"Selected SKU: {selected_sku}")
-    # Add SKU details display here if desired
     pass
