@@ -127,20 +127,21 @@ def get_default_values_for_sku(sku: str, df: pd.DataFrame) -> Dict[str, float]:
         "Average Competitor Pricing": sku_row["average_competitor_pricing"].iloc[0]
     }
 
-    # --- Restore Defaults Button Logic ---
-    if selected_sku:
-        default_values = get_default_values_for_sku(selected_sku, df)
+# --- Restore Defaults Button Logic ---
+if selected_sku:
+    default_values = get_default_values_for_sku(selected_sku, df)
 
-        if default_values:
-            if st.button("Restore Defaults"):
-                for key, value in default_values.items():
-                    if key in input_strings:
-                        st.session_state[key] = str(value)
-
-            # Pre-fill input fields with default values if not already set
+    if default_values:
+        if st.button("Restore Defaults"):
             for key, value in default_values.items():
-                if key in input_strings and key not in st.session_state:
+                if key in input_strings:
                     st.session_state[key] = str(value)
+
+        # Pre-fill input fields with default values if not already set
+        for key, value in default_values.items():
+            if key in input_strings and key not in st.session_state:
+                st.session_state[key] = str(value)
+
 # --- Load Data, Model, and FRED Indices (Cached) ---
 
 df = load_dataset(LOCAL_DATA_PATH)
